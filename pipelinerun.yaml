@@ -1,0 +1,39 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: tekton-
+  name: demo-pipelinerun
+spec:
+  serviceAccountName: tekton-service
+  pipelineRef:
+    name: source-2-image
+  params:
+    - name: source-path
+      value: "/workspace/source"
+    - name: image-tag
+      value: "v0.0.2"
+    - name: image-url
+      value: "your/docker/image/"
+  resources:
+    - name: source-apim
+      resourceSpec:
+        type: git
+        params:
+          - name: revision
+            value: master
+          - name: url
+            value: https://your.source.code.github.com.url.git
+    - name: devops
+      resourceSpec:
+        type: git
+        params:
+          - name: revision
+            value: master
+          - name: url
+            value: https://your.devops.code.github.com.url.git
+    - name: apim-image
+      resourceSpec:
+        type: image
+        params:
+          - name: url
+            value: your/docker/image/url

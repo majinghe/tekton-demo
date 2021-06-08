@@ -1,0 +1,151 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-docker-image
+spec:
+  params:
+    - name: image-tag
+      type: string
+    - name: pr_number
+      type: string
+    - name: base_branch
+      type: string
+    - name: user
+      type: string
+    - name: app
+      type: string
+  resources:
+    inputs:
+      - name: source-code
+        type: git
+      - name: devops-code
+        type: git
+    outputs:
+      - name: docker-image
+        type: image
+  steps:
+    - name: print-debug-info
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        echo "app is $(params.app)"
+        echo "image tag is $(params.image-tag)"
+        echo "pr number tag is $(params.pr_number)"
+        echo "app is $(params.app)"
+        echo "branch is $(params.base_branch)"
+        echo "image url is $(resources.outputs.docker-image.url)"
+        echo "source code path is  $(resources.inputs.source-code.path)"
+        echo "source code path is  $(resources.inputs.devops-code.path)"
+        ls -ltr /workspace/source-code
+        ls -ltr /workspace/devops-code
+        cat /tekton/home/.docker/config.json
+    - name: send-slack-msg-before
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        if [ "$(params.app)" == "ahintegration" ];then
+            application="accesshub"
+        else
+            application="apim"
+        fi
+        curl -X POST -H 'Content-type: application/json' \
+              --data '{"text":"*$(params.user)* opens the pull request on branch `$(params.base_branch)` for `'$application'`, PR is `#$(params.pr_number)`. Begin to build docker image......"}' \
+              https://hooks.slack.com/services/x/xxxxxxxxxx
+    - name: image-build-and-push
+      image: gcr.io/kaniko-project/executor:v0.17.1
+      env:
+        - name: "DOCKER_CONFIG"
+          value: "/tekton/home/.docker/"
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile=$(resources.inputs.source-code.path)/Dockerfile
+        - --destination=$(resources.outputs.docker-image.url):$(params.image-tag)
+        - --context=$(resources.inputs.source-code.path)
+    - name: image-build-succ-slack-message
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        curl -X POST -H 'Content-type: application/json' \
+              --data '{"text":"Build image `$(resources.outputs.docker-image.url):$(params.image-tag)` succ! Begin to scan the image ......"}' \
+              https://hooks.slack.com/services/x/xxxxxxxxx
+    - name: image-scan
+      image: aquasec/trivy
+      env:
+        - name: TRIVY_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: dockerhub-user-pass
+              key: username
+        - name: TRIVY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dockerhub-user-pass
+              key: password
+      script: |
+        #! /bin/sh
+        echo '```' >> /tekton/results/image-scan
+        trivy -q image -o file.txt your/docker/image/$(params.app):$(params.image-tag) >> /tekton/results/image-scan
+        echo '```' >> /tekton/results/image-scan
+    - name: image-scan-report-to-slack
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        VA_REPORT=$(cat /tekton/results/image-scan)
+        curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"Below is the image scan result:","attachments": [{"text" : "'"$VA_REPORT"'"}]}' \
+            https://hooks.slack.com/services/x/xxxxxxx
+    - name: push-devops-code
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        echo "being to config git"
+        git config --global user.email "devops008@sina.com"
+        git config --global user.name "xiaomage"
+        echo "begin to change docker image"
+        if [ "$(params.app)" == "app1" ];then
+            application="app1"
+        else
+            application="app2"
+        fi
+        cd $(resources.inputs.devops-code.path)/helm-charts/kustomize/$application/base
+        version=$(cat deployment.yaml | grep us.icr.io | awk -F ":" '{print $3}')
+        echo "New version is" $(params.image-tag)
+        sed -i "s/$version/$(params.image-tag)/" deployment.yaml
+        echo "begin to push the code to devops repo"
+        git status . && git checkout master
+        git add . && git commit -m "upgrade $application to $(params.image-tag)" && git push origin master
+        echo "**************************"
+    - name: send-msg-to-slack-after
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        curl -X POST -H 'Content-type: application/json' \
+              --data '{"text":"Image scan and kustomize file change has been finished. Please deploy *`DEV`* with argocd now. Argocd URL: https://argocd.devops.com/"}' \
+              https://hooks.slack.com/services/x/xxxxxxx
+
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: svt-send-msg-to-slack
+spec:
+  params:
+    - name: image-tag
+      type: string
+    - name: app
+      type: string
+  steps:
+    - name: svt-send-msg-to-slack
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        if [ "$(params.app)" == "app1" ];then
+            application="app1"
+        else
+            application="app2"
+        fi
+        curl -X POST -H 'Content-type: application/json' \
+              --data '{"text":"This is 4 *'$application' `SVT`*! Please deploy with argocd and *Release* is *`$(params.image-tag)`*. Argocd URL: https://argocd.svt.devops.com/"}' \
+              https://hooks.slack.com/services/x/xxxxxx

@@ -1,0 +1,58 @@
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: source-code-repo1
+spec:
+  type: git
+  params:
+    - name: revision
+      value: master
+    - name: url
+      value: https://your.source.code1.github.com.url.git
+
+---
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: source-code-repo2
+spec:
+  type: git
+  params:
+    - name: revision
+      value: master
+    - name: url
+      value: https://your.source.code2.github.com.url.git
+
+---
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: devops-repo
+spec:
+  type: git
+  params:
+    - name: revision
+      value: master
+    - name: url
+      value: https://your.devops.code.github.com.url.git
+
+---
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: docker-image1
+spec:
+  type: image
+  params:
+    - name: url
+      value: your/docker/image1
+---
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: docker-image2
+spec:
+  type: image
+  params:
+    - name: url
+      value: your/docker/image2

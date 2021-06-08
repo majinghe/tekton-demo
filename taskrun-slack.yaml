@@ -1,0 +1,18 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: send-msg-to-slack-run
+spec:
+  serviceAccountName: tekton-service
+  taskRef:
+    name: send-msg-to-slack
+  resources:
+    outputs:
+      - name: image
+        resourceRef:
+          name: apim-image
+  params:
+    - name: imageTag
+      value: v0.0.1
+    - name: message
+      value: "Image build succ!"

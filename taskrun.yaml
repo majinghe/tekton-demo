@@ -1,0 +1,24 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: build-docker-image-run
+spec:
+  serviceAccountName: tekton-service
+  taskRef:
+    name: build-docker-image
+  resources:
+    inputs:
+      - name: src
+        resourceRef:
+          name: apim-repo
+    outputs:
+      - name: image
+        resourceRef:
+          name: apim-image
+  params:
+    - name: pathToDockerFile
+      value: "/workspace/src"
+    - name: pathToContext
+      value: "/workspace/src"
+    - name: imageTag
+      value: v0.0.1

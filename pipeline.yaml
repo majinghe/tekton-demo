@@ -1,0 +1,67 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: source-2-image
+spec:
+  resources:
+    - name: source-code
+      type: git
+    - name: devops-code
+      type: git
+    - name: docker-image
+      type: image
+  params:
+    - name: image-tag
+      type: string
+    - name: pr_number
+      type: string
+    # - name: branch
+    #   type: string
+    - name: base_branch
+      type: string
+    - name: user
+      type: string
+    - name: app
+      type: string
+  tasks:
+  - name: image-build
+    taskRef:
+      name: build-docker-image
+    when:
+       - input: "$(params.base_branch)"
+         operator: in
+         values: ["dev"]
+    params:
+      - name: image-tag
+        value: "$(params.image-tag)"
+      - name: pr_number
+        value: "$(params.pr_number)"
+      # - name: branch
+      #   value: "$(params.branch)"
+      - name: base_branch
+        value: "$(params.base_branch)"
+      - name: user
+        value: "$(params.user)"
+      - name: app
+        value: "$(params.app)"
+    resources:
+      inputs:
+        - name: source-code
+          resource: source-code
+        - name: devops-code
+          resource: devops-code
+      outputs:
+        - name: docker-image
+          resource: docker-image
+  - name: send-msg-to-slack
+    taskRef:
+      name: svt-send-msg-to-slack
+    when:
+       - input: "$(params.base_branch)"
+         operator: in
+         values: ["master"]
+    params:
+      - name: image-tag
+        value: "$(params.image-tag)"
+      - name: app
+        value: "$(params.app)"

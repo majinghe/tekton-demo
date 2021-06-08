@@ -1,0 +1,23 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: send-msg-to-slack
+spec:
+  params:
+    - name: message
+      type: string
+    - name: imageTag
+      type: string
+  resources:
+    outputs:
+      - name: image
+        type: image
+  steps:
+    - name: print-debug-info
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+        echo "being to send msg to slack"
+        curl -X POST -H 'Content-type: application/json' \
+             --data '{"text":"$(params.message).image is $(resources.outputs.image.url):$(params.imageTag)"}' \
+             https://hooks.slack.com/services/x/xxxxxxxx

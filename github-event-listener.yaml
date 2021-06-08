@@ -1,0 +1,134 @@
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: github-listener-interceptor
+spec:
+  triggers:
+    - name: github-listener
+      interceptors:
+        - github:
+            secretRef:
+              secretName: github-token
+              secretKey: secretToken
+            eventTypes:
+              - pull_request
+        - cel:
+            filter: >-
+              (header.match('X-GitHub-Event', 'pull_request') &&
+               body.action in ['closed'])
+            overlays:
+            - key: pr_number
+              expression: "body.number"
+            - key: tag
+              expression: "body.pull_request.title.split(']')[0].split('[')[1]"
+            - key: user
+              expression: "body.pull_request.user.login"
+            # - key: branch
+            #   expression: "body.pull_request.head.ref"
+            - key: base_branch
+              expression: "body.pull_request.base.ref"
+            - key: app
+              expression: "body.repository.clone_url.split('/')[4].split('-')[0].lowerAscii()"
+      bindings:
+        - ref: github-pr-binding
+      template:
+        ref: github-template
+  resources:
+    kubernetesResource:
+      spec:
+        template:
+          spec:
+            serviceAccountName: tekton-triggers
+            containers:
+              - resources:
+                  requests:
+                    memory: "64Mi"
+                    cpu: "250m"
+                  limits:
+                    memory: "128Mi"
+                    cpu: "500m"
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: github-pr-binding
+spec:
+  params:
+    - name: gitrepositoryurl
+      value: $(body.repository.clone_url)
+    - name: pr_number
+      value: $(extensions.pr_number)
+    - name: tag
+      value: $(extensions.tag)
+    - name: user
+      value: $(extensions.user)
+    # - name: branch
+    #   value: $(extensions.branch)
+    - name: base_branch
+      value: $(extensions.base_branch)
+    - name: app
+      value: $(extensions.app)
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: github-template
+  annotations:
+    triggers.tekton.dev/old-escape-quotes: "true"
+spec:
+  params:
+    - name: gitrepositoryurl
+    - name: pr_number
+    - name: tag
+    - name: user
+    # - name: branch
+    - name: base_branch
+    - name: app
+  resourcetemplates:
+  - apiVersion: tekton.dev/v1beta1
+    kind: PipelineRun
+    metadata:
+      generateName: tekton-pipelinerun-
+#      name: sec-pipelinerun
+    spec:
+      serviceAccountName: tekton-service
+      pipelineRef:
+        name: source-2-image
+      params:
+        - name: image-tag
+          value: $(tt.params.tag)
+        - name: pr_number
+          value: $(tt.params.pr_number)
+        # - name: branch
+        #   value: $(tt.params.branch)
+        - name: base_branch
+          value: $(tt.params.base_branch)
+        - name: user
+          value: $(tt.params.user)
+        - name: app
+          value: $(tt.params.app)
+      resources:
+        - name: source-code
+          resourceSpec:
+            type: git
+            params:
+              - name: revision
+                value: $(tt.params.base_branch)
+              - name: url
+                value: $(tt.params.gitrepositoryurl)
+        - name: devops-code
+          resourceSpec:
+            type: git
+            params:
+              - name: revision
+                value: master
+              - name: url
+                value: https://your.github.com.url..git
+        - name: docker-image
+          resourceSpec:
+            type: image
+            params:
+              - name: url
+                value: your/docker/image/$(tt.params.app)
+
