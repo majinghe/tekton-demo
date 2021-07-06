@@ -1,0 +1,68 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-docker-image
+spec:
+  params:
+    - name: image-tag
+      type: string
+  resources:
+    inputs:
+      - name: source-code
+        type: git
+      - name: devops-code
+        type: git
+    outputs:
+      - name: docker-image
+        type: image
+  steps:
+    - name: image-build-and-push
+      image: gcr.io/kaniko-project/executor:v0.17.1
+      env:
+        - name: "DOCKER_CONFIG"
+          value: "/tekton/home/.docker/"
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile=$(resources.inputs.source-code.path)/Dockerfile
+        - --destination=$(resources.outputs.docker-image.url):$(params.image-tag)
+        - --context=$(resources.inputs.source-code.path)
+    - name: image-scan
+      image: aquasec/trivy
+      env:
+        - name: TRIVY_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: dockerhub-user-pass
+              key: username
+        - name: TRIVY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dockerhub-user-pass
+              key: password
+      script: |
+        #! /bin/sh
+        echo '```' >> /tekton/results/image-scan
+        trivy -q image -o file.txt  $(resources.outputs.docker-image.url):$(params.image-tag) >> /tekton/results/image-scan
+        echo '```' >> /tekton/results/image-scan
+    - name: push-devops-code
+      image: dllhb/apline-debug:v0.1
+      script: |
+        #! /bin/sh
+    
+        echo "being to config git"
+        git config --global user.email "devops008@sina.com"
+        git config --global user.name "xiaomage"
+        apk update && apk add openssh-keygen openssh-client --no-cache
+        echo "begin to change docker image"
+        echo $(resources.inputs.devops-code.path)
+        ls -ltr $(resources.inputs.devops-code.path)/kustomize/
+
+        cd $(resources.inputs.devops-code.path)/kustomize/
+        version=$(cat deployment.yaml | grep dllhb | awk -F ":" '{print $3}')
+        echo "New version is" $(params.image-tag)
+        sed -i "s/$version/$(params.image-tag)/" deployment.yaml
+        echo "begin to push the code to devops repo"
+        git status . && git checkout main
+        git add . && git commit -m "upgrade $application to $(params.image-tag)" && git push origin main
+        echo "**************************"

@@ -1,0 +1,24 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: build-docker-image-run
+  generateName: gotc-gitops
+spec:
+  serviceAccountName: tekton-service
+  taskRef:
+    name: build-docker-image
+  resources:
+    inputs:
+      - name: source-code
+        resourceRef:
+          name: source-code
+      - name: devops-code
+        resourceRef:
+          name: devops-code
+    outputs:
+      - name: docker-image
+        resourceRef:
+          name: docker-image
+  params:
+    - name: image-tag
+      value: v5.1.0
