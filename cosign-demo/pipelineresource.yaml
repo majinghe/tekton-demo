@@ -1,0 +1,22 @@
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: source-code
+spec:
+  type: git
+  params:
+    - name: revision
+      value: main
+    - name: url
+      value: https://jihulab.com/keyboard-man/tekton-image.git
+
+---
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: docker-image
+spec:
+  type: image
+  params:
+    - name: url
+      value: dllhb/go-demo

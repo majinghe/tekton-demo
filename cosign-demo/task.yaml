@@ -1,0 +1,80 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-docker-image
+spec:
+  params:
+    - name: image-tag
+      type: string
+  resources:
+    inputs:
+      - name: source-code
+        type: git
+    outputs:
+      - name: docker-image
+        type: image
+  steps:
+    - name: image-build-and-push
+      image: gcr.io/kaniko-project/executor:v1.6.0
+      env:
+        - name: "DOCKER_CONFIG"
+          value: "/tekton/home/.docker/"
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile=$(resources.inputs.source-code.path)/Dockerfile
+        - --destination=$(resources.outputs.docker-image.url):$(params.image-tag)
+        - --context=$(resources.inputs.source-code.path)
+    - name: image-scan
+      image: aquasec/trivy
+      env:
+        - name: TRIVY_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: dockerhub-user-pass
+              key: username
+        - name: TRIVY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dockerhub-user-pass
+              key: password
+      script: |
+        #! /bin/sh
+        trivy image  $(resources.outputs.docker-image.url):$(params.image-tag)
+    - name: image-singature
+      image: bitnami/cosign:latest
+      securityContext:
+        runAsUser: 0
+      args:
+        - sign
+        - --key
+        - /tmp/cosign.key
+        - $(resources.outputs.docker-image.url):$(params.image-tag)
+      env:
+      - name: COSIGN_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: cosign-password
+            key: cosign-password
+      volumeMounts:
+      - name: cosign-key
+        mountPath: /tmp/cosign.key
+        subPath: cosign.key
+    - name: image-singature-verification
+      image: bitnami/cosign:latest
+      args:
+        - verify
+        - --key
+        - /tmp/cosign.pub
+        - $(resources.outputs.docker-image.url):$(params.image-tag)
+      volumeMounts:
+      - name: cosign-pub
+        mountPath: /tmp/cosign.pub
+        subPath: cosign.pub
+  volumes:
+    - name: cosign-pub
+      secret:
+        secretName: cosign-pub
+    - name: cosign-key
+      secret:
+        secretName: cosign-key

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-service
+secrets:
+  - name: jihu-ssh-key
+  - name: jihu-token
+  - name: dockerhub-user-pass
